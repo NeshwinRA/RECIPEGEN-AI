@@ -1,0 +1,792 @@
+{
+  "project": "RecipeGen AI",
+  "schema_version": 1,
+  "status_values": ["todo", "in_progress", "done", "blocked"],
+  "rules": [
+    "The agent may edit ONLY the 'status' and 'completed_at' fields of a feature. Nothing else in this file may be changed.",
+    "Set status to 'done' only after the 'verify' check passes AND every 'acceptance' item is true. Then set completed_at (YYYY-MM-DD) and append an entry to progress.md.",
+    "Work on the first feature in array order whose status is 'todo' and whose depends_on features are all 'done'.",
+    "Never add, remove, reorder or reword features. If a feature is wrong or impossible, set it to 'blocked' and tell the user why.",
+    "Steps that start with 'USER:' must be done by the human. Stop and ask, do not fake them."
+  ],
+  "features": [
+    {
+      "id": "F01",
+      "milestone": 1,
+      "phase": "Setup",
+      "title": "Development environment and Git repo",
+      "description": "Working Python virtual environment, VS Code interpreter selected, Git repo initialised with a safe .gitignore.",
+      "steps": [
+        "USER: confirm OS (Windows/Mac/Linux). Python 3.14 may lack prebuilt wheels for chromadb / torch / sentence-transformers. Recommend installing Python 3.12 and using it for the venv; if the user insists on 3.14, test 'pip install chromadb sentence-transformers' first and fall back to 3.12 if it fails.",
+        "Create the project folder 'recipegen-ai' and a virtual environment '.venv' with the chosen Python version.",
+        "Select the .venv interpreter in VS Code.",
+        "Run 'git init'. Create .gitignore covering .venv/, .env, __pycache__/, chroma_db/, *.sqlite3, data/raw/, .pytest_cache/.",
+        "Create the GitHub repo (empty) and connect it as 'origin'."
+      ],
+      "acceptance": [
+        "Inside the venv, python --version shows the chosen version.",
+        "git status does not list .venv or .env.",
+        "Repo exists on GitHub and 'git remote -v' shows it."
+      ],
+      "verify": "python --version ; git status ; git remote -v",
+      "depends_on": [],
+      "est_hours": 1.5,
+      "status": "done",
+      "completed_at": "2026-10-09"
+    },
+    {
+      "id": "F02",
+      "milestone": 1,
+      "phase": "Setup",
+      "title": "Project structure and base dependencies",
+      "description": "Create the folder layout from overview.md and install the Milestone 1 dependencies.",
+      "steps": [
+        "Create folders: recipegen/, tests/, data/raw, data/processed, eval/, scripts/, docs/.",
+        "Create empty module files listed in overview.md (with __init__.py in recipegen/ and tests/).",
+        "Create requirements.txt with: streamlit, google-genai, python-dotenv, pydantic, pytest. Install them.",
+        "Create a minimal README.md with the project name and one-line description."
+      ],
+      "acceptance": [
+        "Folder layout matches overview.md.",
+        "All base packages import without error."
+      ],
+      "verify": "python -c \"import streamlit, pydantic, dotenv; from google import genai; print('ok')\"",
+      "depends_on": ["F01"],
+      "est_hours": 0.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F03",
+      "milestone": 1,
+      "phase": "Phase 4",
+      "title": "Gemini API key and hello-world call",
+      "description": "Get a Gemini key from Google AI Studio (not OpenAI; the project uses Gemini) and make one successful API call.",
+      "steps": [
+        "USER: create a Gemini API key in Google AI Studio (aistudio.google.com). Do not paste it into chat or commit it.",
+        "USER: put it in a local .env file as GEMINI_API_KEY=... ; also set GEMINI_MODEL (check Google's current model list; do not rely on model names from memory).",
+        "Create .env.example with placeholder values only (this one IS committed).",
+        "Create recipegen/config.py that loads settings from .env using python-dotenv and fails with a clear message if the key is missing.",
+        "Create scripts/hello_gemini.py that sends 'Say hello in one line' and prints the reply."
+      ],
+      "acceptance": [
+        "hello_gemini.py prints a model reply.",
+        ".env is git-ignored and .env.example contains no real key.",
+        "Missing key gives a readable error, not a stack trace."
+      ],
+      "verify": "python scripts/hello_gemini.py ; git check-ignore .env",
+      "depends_on": ["F02"],
+      "est_hours": 1.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F04",
+      "milestone": 1,
+      "phase": "Phase 3C",
+      "title": "Input validation module",
+      "description": "Pure-Python validation of user input before any API call.",
+      "steps": [
+        "USER: confirm allowed ranges. Suggested defaults: ingredients 1-15 items, each 2-40 chars; cooking time 5-180 min; servings 1-10; total input under 500 chars.",
+        "Put limits as constants in config.py.",
+        "Create recipegen/validation.py with validate_inputs(...) returning a list of human-readable error strings (empty list = valid).",
+        "Handle: empty/whitespace ingredients, duplicates, non-numeric or negative time, servings out of range, over-long input.",
+        "Write tests/test_validation.py covering every rule, including boundary values."
+      ],
+      "acceptance": [
+        "Each rule from Phase 3C has at least one passing and one failing test.",
+        "No Streamlit or API imports inside validation.py."
+      ],
+      "verify": "pytest tests/test_validation.py -q",
+      "depends_on": ["F02"],
+      "est_hours": 1.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F05",
+      "milestone": 1,
+      "phase": "Phase 3D",
+      "title": "Structured request model",
+      "description": "A pydantic RecipeRequest that normalises user input and carries the extra fields for the target audience.",
+      "steps": [
+        "USER: confirm the extra fields beyond the document: spice_level (mild/medium/hot), equipment (e.g. single stove, pressure cooker, rice cooker, microwave), bachelor_mode (bool: few utensils, pantry staples, quick cleanup). Also confirm the cuisine list; suggested: South Indian, Tamil, Kerala, Andhra, Karnataka, Telangana, North Indian, Other.",
+        "Create recipegen/models.py with RecipeRequest: ingredients, cuisine, dietary_preference, max_cooking_time, servings, spice_level, equipment, bachelor_mode.",
+        "Normalise: lowercase, strip, de-duplicate ingredients.",
+        "USER: decide whether 'max cooking time' means cook time only or prep + cook. Record the answer as a comment in models.py and in docs/DECISIONS.md.",
+        "Write tests/test_models.py."
+      ],
+      "acceptance": [
+        "The example request from Phase 3D (potato, onion, egg) builds and serializes to the documented JSON shape plus the new fields.",
+        "Decision on time semantics is written down."
+      ],
+      "verify": "pytest tests/test_models.py -q",
+      "depends_on": ["F04"],
+      "est_hours": 1.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F06",
+      "milestone": 1,
+      "phase": "Phase 4B",
+      "title": "Prompt builder",
+      "description": "Turn a RecipeRequest into the prompt, following the template in the project document.",
+      "steps": [
+        "Create recipegen/prompts.py with build_prompt(request) -> str and a SYSTEM_INSTRUCTION constant.",
+        "Include all fields, the 'identify additional ingredients' rule, and the rule: if constraints cannot be met, explain the limitation instead of inventing a solution.",
+        "Add bachelor_mode text: minimal utensils, common pantry ingredients, short cleanup.",
+        "Add a South Indian authenticity instruction only when cuisine is South Indian-type; do not claim authenticity the model cannot back.",
+        "Write tests/test_prompts.py asserting every request field appears in the prompt."
+      ],
+      "acceptance": [
+        "Prompt for the Phase 3B example contains ingredients, cuisine, diet, time and servings.",
+        "Prompt asks for structured JSON output."
+      ],
+      "verify": "pytest tests/test_prompts.py -q",
+      "depends_on": ["F05"],
+      "est_hours": 1.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F07",
+      "milestone": 1,
+      "phase": "Phase 4C",
+      "title": "Gemini client wrapper with error handling",
+      "description": "One function that sends a prompt to Gemini and handles timeouts, rate limits and bad responses.",
+      "steps": [
+        "Create recipegen/llm_client.py using the official google-genai SDK; model from GEMINI_MODEL env var.",
+        "Define custom exceptions: LLMTimeoutError, LLMRateLimitError, LLMResponseError.",
+        "Retry up to 3 times with exponential backoff on rate-limit / transient 5xx errors only.",
+        "Never log the API key or full prompts containing user data at INFO level.",
+        "Write tests/test_llm_client.py using a mocked client: success, 429, timeout, empty response."
+      ],
+      "acceptance": [
+        "All four mocked scenarios behave as specified.",
+        "A real call through the wrapper succeeds."
+      ],
+      "verify": "pytest tests/test_llm_client.py -q ; python scripts/hello_gemini.py",
+      "depends_on": ["F03", "F06"],
+      "est_hours": 2.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F08",
+      "milestone": 1,
+      "phase": "Phase 5A",
+      "title": "Structured recipe schema and JSON output",
+      "description": "Make Gemini return JSON that parses into a validated Recipe object.",
+      "steps": [
+        "Add a Recipe model to models.py: name, servings, prep_time_min, cook_time_min, ingredients (name, quantity, unit, from_user flag), additional_ingredients, steps, notes, constraints_met, limitation_message.",
+        "Use Gemini structured output (JSON response mime type + schema) in llm_client.py; check current SDK docs for the exact parameter names.",
+        "On JSON parse or schema failure, do ONE repair retry, then raise LLMResponseError. Never treat invalid output as success.",
+        "Create tests/fixtures with a good JSON and several bad ones; write tests/test_recipe_parsing.py."
+      ],
+      "acceptance": [
+        "Good fixture parses into Recipe; each bad fixture raises a clear error.",
+        "A live call returns a parsed Recipe for the Phase 3B example."
+      ],
+      "verify": "pytest tests/test_recipe_parsing.py -q",
+      "depends_on": ["F07"],
+      "est_hours": 2.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F09",
+      "milestone": 1,
+      "phase": "Phase 5B-5D",
+      "title": "Response validation (fields, time, diet)",
+      "description": "Check the generated recipe against the user's constraints before display.",
+      "steps": [
+        "Create recipegen/response_validation.py returning a ValidationReport (passed, errors, warnings).",
+        "Field checks: non-empty name, at least one ingredient, usable steps, valid times and servings.",
+        "Time check against the semantics decided in F05. If exceeded: one regeneration with feedback, then show a visible warning. Never present estimates as guarantees.",
+        "USER: decide how to treat eggs for 'Vegetarian' (many tools offer a separate 'Eggetarian' option). Suggested dietary options: Vegetarian, Eggetarian, Non-Vegetarian, Vegan.",
+        "Diet keyword check using explicit keyword lists in a data file (meat, fish, egg, dairy, honey as relevant). Document that this is a first safeguard, not a guarantee.",
+        "Write tests/test_response_validation.py including: vegetarian request returning chicken fails; time over limit fails."
+      ],
+      "acceptance": [
+        "Each check has passing and failing tests.",
+        "The diet decision is recorded in docs/DECISIONS.md."
+      ],
+      "verify": "pytest tests/test_response_validation.py -q",
+      "depends_on": ["F08"],
+      "est_hours": 2.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F10",
+      "milestone": 1,
+      "phase": "Phase 3A",
+      "title": "Streamlit interface",
+      "description": "The input form and display area, not yet wired to the AI.",
+      "steps": [
+        "Create app.py with: ingredient input, cuisine select, dietary select, max time, servings, spice level, equipment, bachelor-mode toggle, Generate button, result area.",
+        "Show validation errors from validation.py inline; do not call the model when invalid.",
+        "Use st.session_state so results survive reruns.",
+        "Add a footer disclaimer: recipes, quantities, times and food-safety steps must be checked before use."
+      ],
+      "acceptance": [
+        "streamlit run app.py opens in the browser.",
+        "Empty ingredients shows an error and nothing is generated."
+      ],
+      "verify": "streamlit run app.py (manual: submit empty form, then a valid form)",
+      "depends_on": ["F05", "F04"],
+      "est_hours": 2.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F11",
+      "milestone": 1,
+      "phase": "Phase 10 (M1)",
+      "title": "End-to-end pipeline (Milestone 1 demo)",
+      "description": "Connect UI -> validation -> prompt -> Gemini -> response validation -> display.",
+      "steps": [
+        "Create recipegen/pipeline.py with generate_recipe(request, use_rag=False) that orchestrates the steps and returns recipe + ValidationReport.",
+        "Call it from app.py with st.spinner. Show friendly messages for each custom exception.",
+        "Render the recipe cleanly: name, times, ingredients table, numbered steps, warnings from validation.",
+        "Add a Regenerate button. Add a Save button that is visibly disabled until F26.",
+        "Write tests/test_pipeline.py with a mocked LLM client."
+      ],
+      "acceptance": [
+        "The Phase 3B example produces a displayed recipe.",
+        "Forcing an API failure (bad key) shows a readable message.",
+        "Pipeline tests pass."
+      ],
+      "verify": "pytest tests/test_pipeline.py -q ; streamlit run app.py (manual end-to-end)",
+      "depends_on": ["F09", "F10"],
+      "est_hours": 2.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F12",
+      "milestone": 1,
+      "phase": "Milestone 1 checkpoint",
+      "title": "Milestone 1 checkpoint: full tests, push, tag",
+      "description": "Lock in Milestone 1 before starting RAG.",
+      "steps": [
+        "Run the whole test suite and fix failures.",
+        "Update README with setup and run instructions.",
+        "Commit with clear messages, push to GitHub, tag v0.1-m1.",
+        "Append an interviewer-style critique of Milestone 1 weaknesses to progress.md."
+      ],
+      "acceptance": [
+        "All tests pass.",
+        "Fresh clone + README instructions runs the app (agent describes the check; USER confirms).",
+        "Tag v0.1-m1 is on GitHub."
+      ],
+      "verify": "pytest -q ; git tag",
+      "depends_on": ["F11"],
+      "est_hours": 1.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F13",
+      "milestone": 2,
+      "phase": "Phase 1A",
+      "title": "Choose and download the recipe dataset",
+      "description": "Pick a dataset with a usable licence and enough South Indian coverage.",
+      "steps": [
+        "Agent suggests candidates to search on Kaggle (for example Indian-food datasets with cuisine, ingredients, instructions and time fields). Agent must say it cannot verify current contents or licences.",
+        "USER: download the chosen file manually and place it in data/raw/ (agents cannot log in to Kaggle).",
+        "USER + agent: read the licence page. Record licence, source URL and download date in docs/DATA_LICENCE.md.",
+        "Record the column list and row count."
+      ],
+      "acceptance": [
+        "Raw file exists in data/raw/ and is git-ignored.",
+        "docs/DATA_LICENCE.md states the licence and whether redistribution is allowed.",
+        "If the licence forbids use or redistribution, the feature is 'blocked' and a different dataset is chosen."
+      ],
+      "verify": "python -c \"import os; print(os.listdir('data/raw'))\" ; read docs/DATA_LICENCE.md",
+      "depends_on": ["F12"],
+      "est_hours": 1.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F14",
+      "milestone": 2,
+      "phase": "Phase 1B",
+      "title": "Inspect the raw data",
+      "description": "Understand the data before cleaning it.",
+      "steps": [
+        "Create scripts/inspect_data.py using Pandas.",
+        "Report: row count, columns and types, null counts per column, duplicate count, cuisine value counts, how many rows look South Indian, how many have time fields.",
+        "Write the findings to docs/data_report.md (generated by the script)."
+      ],
+      "acceptance": [
+        "docs/data_report.md exists with the numbers above.",
+        "The report states honestly if South Indian coverage is too thin to support the project focus."
+      ],
+      "verify": "python scripts/inspect_data.py",
+      "depends_on": ["F13"],
+      "est_hours": 1.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F15",
+      "milestone": 2,
+      "phase": "Phase 1B",
+      "title": "Data cleaning script",
+      "description": "Repeatable cleaning with Pandas. Raw data is never modified.",
+      "steps": [
+        "Create scripts/clean_data.py. Read from data/raw/, write only to data/processed/.",
+        "Remove duplicates, strip HTML and stray formatting, normalise text, drop invalid or incomplete recipes.",
+        "Standardise ingredient names where reasonable (e.g. case, plurals). Do NOT invent missing quantities; keep unknowns as null.",
+        "Print how many rows each step removed.",
+        "Write tests/test_cleaning.py on a tiny hand-made DataFrame."
+      ],
+      "acceptance": [
+        "Cleaning is idempotent: running twice gives the same output.",
+        "Tests pass and cover HTML stripping, duplicates and missing values."
+      ],
+      "verify": "pytest tests/test_cleaning.py -q ; python scripts/clean_data.py",
+      "depends_on": ["F14"],
+      "est_hours": 3.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F16",
+      "milestone": 2,
+      "phase": "Phase 1C",
+      "title": "Processed dataset in a consistent schema",
+      "description": "Final structured recipe file used by retrieval.",
+      "steps": [
+        "Define the schema: id, name, ingredients (list), instructions, cuisine, prep_time, cook_time, diet tag if the source provides one.",
+        "USER: decide whether to derive a veg/non-veg tag from ingredients when the source has none. Agent must not infer it silently.",
+        "Write data/processed/recipes.json (or CSV, agreed with the user).",
+        "Generate a short summary: final row count and South Indian subset size."
+      ],
+      "acceptance": [
+        "Every row matches the schema.",
+        "Row count and subset size are recorded in progress.md."
+      ],
+      "verify": "python scripts/clean_data.py ; python -c \"import json; d=json.load(open('data/processed/recipes.json')); print(len(d))\"",
+      "depends_on": ["F15"],
+      "est_hours": 1.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F17",
+      "milestone": 2,
+      "phase": "Phase 2A",
+      "title": "Embeddings with Sentence Transformers",
+      "description": "Convert recipe text into vectors.",
+      "steps": [
+        "Add sentence-transformers and chromadb to requirements.txt and install (watch Python version issues from F01).",
+        "Create recipegen/embeddings.py with embed_texts(list[str]) using one fixed model name stored in config.py. Check the model name on the Sentence Transformers docs before choosing.",
+        "Decide the text to embed per recipe (name + ingredients + cuisine) and document why.",
+        "Sanity check: 'potato onion sandwich' is closer to a potato sandwich recipe than to an unrelated dessert."
+      ],
+      "acceptance": [
+        "Embedding dimension is printed and recorded.",
+        "Sanity check passes on real rows from the processed data."
+      ],
+      "verify": "pytest tests/test_embeddings.py -q",
+      "depends_on": ["F16"],
+      "est_hours": 1.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F18",
+      "milestone": 2,
+      "phase": "Phase 2B",
+      "title": "Store recipes in ChromaDB",
+      "description": "Persistent vector collection with documents and metadata.",
+      "steps": [
+        "Create scripts/build_index.py that embeds all processed recipes and upserts into a persistent ChromaDB collection in chroma_db/.",
+        "Store original text and metadata (cuisine, times, diet tag).",
+        "Make it idempotent (upsert by recipe id).",
+        "Print time taken and collection count."
+      ],
+      "acceptance": [
+        "Collection count equals processed row count.",
+        "Re-running does not create duplicates."
+      ],
+      "verify": "python scripts/build_index.py ; python -c \"import chromadb; print(chromadb.PersistentClient('chroma_db').get_collection('recipes').count())\"",
+      "depends_on": ["F17"],
+      "est_hours": 1.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F19",
+      "milestone": 2,
+      "phase": "Phase 2C",
+      "title": "Retrieval function",
+      "description": "Semantic search that returns candidate recipes.",
+      "steps": [
+        "Create recipegen/retrieval.py with retrieve(query, k, cuisine=None) using the SAME embedding model as indexing.",
+        "Return recipe id, name, text, metadata and distance.",
+        "Treat results as candidates only; do not assume they satisfy user constraints.",
+        "Write tests with a tiny temporary Chroma collection.",
+        "Manually try 5 queries and record the top results in docs/retrieval_notes.md."
+      ],
+      "acceptance": [
+        "Tests pass.",
+        "'quick breakfast with potatoes and onions' returns plausible recipes, or the notes say honestly that it does not."
+      ],
+      "verify": "pytest tests/test_retrieval.py -q",
+      "depends_on": ["F18"],
+      "est_hours": 2.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F20",
+      "milestone": 2,
+      "phase": "Phase 6B-6D",
+      "title": "RAG prompt construction and generation",
+      "description": "Augment the prompt with retrieved recipes and generate the final recipe.",
+      "steps": [
+        "Create recipegen/rag.py with build_rag_prompt(request, retrieved).",
+        "Instruct the model to use retrieved recipes as reference only, to respect user constraints over retrieved content, and to say which retrieved ids it used.",
+        "Fallback: if retrieval returns nothing useful, use the plain prompt and mark the result as non-RAG.",
+        "Extend pipeline.generate_recipe(use_rag=True) and reuse the same response validation.",
+        "Write tests/test_rag.py with mocked retrieval and LLM."
+      ],
+      "acceptance": [
+        "RAG path and plain path both return validated Recipe objects.",
+        "Fallback path is tested."
+      ],
+      "verify": "pytest tests/test_rag.py tests/test_pipeline.py -q",
+      "depends_on": ["F19", "F11"],
+      "est_hours": 1.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F21",
+      "milestone": 2,
+      "phase": "Phase 6A",
+      "title": "RAG controls in the UI",
+      "description": "Let the user switch RAG on or off and see what was retrieved.",
+      "steps": [
+        "Add a 'Use recipe knowledge base (RAG)' toggle to app.py.",
+        "Show retrieved recipes in an expander so the user can see the grounding.",
+        "Label every result with the mode used (plain / RAG)."
+      ],
+      "acceptance": [
+        "Toggle changes the pipeline path.",
+        "Retrieved sources are visible when RAG is on."
+      ],
+      "verify": "streamlit run app.py (manual, both modes with the Phase 6A sample query)",
+      "depends_on": ["F20"],
+      "est_hours": 1.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F22",
+      "milestone": 2,
+      "phase": "Phase 8A",
+      "title": "Evaluation test set",
+      "description": "A fixed set of requests used to compare plain LLM vs RAG.",
+      "steps": [
+        "Create eval/test_cases.json with at least 30 cases: vegetarian, non-veg, eggetarian, tight time, impossible constraints, odd ingredient combinations, South Indian styles, bachelor mode.",
+        "Each case lists the request and the checks that apply (diet, time, ingredient usage).",
+        "USER: review the cases and approve or edit them before F23 starts."
+      ],
+      "acceptance": [
+        "30+ cases, JSON loads, each case maps to a valid RecipeRequest or is deliberately invalid.",
+        "User approval recorded in progress.md."
+      ],
+      "verify": "python -c \"import json; print(len(json.load(open('eval/test_cases.json'))))\"",
+      "depends_on": ["F21"],
+      "est_hours": 2.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F23",
+      "milestone": 2,
+      "phase": "Phase 8B",
+      "title": "Evaluation runner and metrics",
+      "description": "Run every case in both modes and measure.",
+      "steps": [
+        "Create eval/run_eval.py. Run each case with use_rag False and True.",
+        "Record: success rate, valid-structured-response rate, ingredient compliance, diet compliance, time compliance, average latency, API error rate, token usage and estimated cost (zero on a free tier, but still record tokens).",
+        "Sleep between calls to respect rate limits; handle failures without crashing the run.",
+        "Save raw results to eval/results/ as CSV with a timestamp."
+      ],
+      "acceptance": [
+        "A full run completes and writes a CSV.",
+        "Runner never counts an invalid response as a success."
+      ],
+      "verify": "python eval/run_eval.py",
+      "depends_on": ["F22"],
+      "est_hours": 3.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F24",
+      "milestone": 2,
+      "phase": "Phase 8C",
+      "title": "LLM vs RAG comparison report",
+      "description": "Honest write-up of what the numbers show.",
+      "steps": [
+        "Create docs/EVAL_REPORT.md with a results table for both modes and the method.",
+        "State the conclusion the data supports. If RAG did not help, say so; do not spin it.",
+        "List limitations: sample size, keyword-based diet checks, model non-determinism, dataset coverage.",
+        "Commit, push, tag v0.2-m2. Append an interviewer-style critique to progress.md."
+      ],
+      "acceptance": [
+        "Report contains real numbers from F23.",
+        "Limitations section is present and specific.",
+        "Tag v0.2-m2 is on GitHub."
+      ],
+      "verify": "read docs/EVAL_REPORT.md ; git tag",
+      "depends_on": ["F23"],
+      "est_hours": 2.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F25",
+      "milestone": 3,
+      "phase": "Phase 7",
+      "title": "SQLite database module",
+      "description": "Schema and data-access functions for history and favourites.",
+      "steps": [
+        "Create recipegen/db.py with init_db(), save_recipe(), list_recipes(), get_recipe(), set_favourite().",
+        "Table columns: id, request_json, recipe_json, created_at, is_favourite, mode (plain/RAG).",
+        "Use parameterised queries only, never string-built SQL.",
+        "USER: confirm single-user is enough for now. If multi-user is wanted, this feature must be extended with user ids and access control before deployment.",
+        "Write tests/test_db.py using a temporary database file."
+      ],
+      "acceptance": [
+        "CRUD and favourite toggle tests pass.",
+        "Database file is git-ignored."
+      ],
+      "verify": "pytest tests/test_db.py -q",
+      "depends_on": ["F24"],
+      "est_hours": 1.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F26",
+      "milestone": 3,
+      "phase": "Phase 7A",
+      "title": "Save generated recipes",
+      "description": "Enable the Save button and persist results.",
+      "steps": [
+        "Enable Save in app.py; call db.save_recipe with the request and recipe.",
+        "Prevent duplicate saves of the same displayed result on rerun.",
+        "Show a confirmation message."
+      ],
+      "acceptance": [
+        "A saved recipe appears in the database.",
+        "Clicking Save twice does not create two rows for the same result."
+      ],
+      "verify": "pytest tests/test_db.py -q ; manual save in the app",
+      "depends_on": ["F25"],
+      "est_hours": 1.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F27",
+      "milestone": 3,
+      "phase": "Phase 7B",
+      "title": "Recipe history view",
+      "description": "List and reopen past recipes.",
+      "steps": [
+        "Add a History page or sidebar section listing recipes newest first.",
+        "Clicking an item reopens it in the normal display component.",
+        "Handle the empty-history case."
+      ],
+      "acceptance": [
+        "Previously saved recipes can be reopened after restarting the app."
+      ],
+      "verify": "streamlit run app.py (manual: save, restart, reopen)",
+      "depends_on": ["F26"],
+      "est_hours": 1.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F28",
+      "milestone": 3,
+      "phase": "Phase 7C",
+      "title": "Favourites",
+      "description": "Mark, unmark and filter favourite recipes.",
+      "steps": [
+        "Add a favourite toggle on the recipe display and in history.",
+        "Add a 'Favourites only' filter."
+      ],
+      "acceptance": [
+        "Favourite state persists across restarts and the filter works."
+      ],
+      "verify": "pytest tests/test_db.py -q ; manual check",
+      "depends_on": ["F27"],
+      "est_hours": 1.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F29",
+      "milestone": 3,
+      "phase": "Phase 8",
+      "title": "Automated test suite hardening",
+      "description": "Close test gaps and add coverage reporting.",
+      "steps": [
+        "Add pytest-cov. Report coverage.",
+        "USER: agree a coverage target (suggested 70% on the recipegen package, not including app.py).",
+        "Add missing tests for the six example cases listed in Phase 8A.",
+        "Mock all network calls so tests run offline."
+      ],
+      "acceptance": [
+        "pytest passes with no network.",
+        "Coverage meets the agreed target."
+      ],
+      "verify": "pytest --cov=recipegen -q",
+      "depends_on": ["F28"],
+      "est_hours": 2.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F30",
+      "milestone": 3,
+      "phase": "Phase 9A",
+      "title": "Error handling, logging and abuse limits",
+      "description": "Make failures understandable and the app hard to misuse.",
+      "steps": [
+        "Add standard logging (no secrets, no full user prompts at INFO).",
+        "Add a simple per-session cooldown or request cap to protect the API quota.",
+        "Review every exception path in pipeline.py and app.py; no raw stack traces reach the user.",
+        "Write tests for the cooldown logic."
+      ],
+      "acceptance": [
+        "Bad key, no network and rate limit each show a distinct friendly message.",
+        "Cooldown tests pass."
+      ],
+      "verify": "pytest -q ; manual failure simulation",
+      "depends_on": ["F29"],
+      "est_hours": 1.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F31",
+      "milestone": 3,
+      "phase": "Phase 9B",
+      "title": "README and documentation",
+      "description": "Recruiter-facing documentation.",
+      "steps": [
+        "README: what it is, screenshots or GIF, architecture diagram (from the workflow summary), setup, env vars, run, test, eval results summary, limitations, disclaimer.",
+        "Link docs/EVAL_REPORT.md and docs/DECISIONS.md.",
+        "Add a LICENSE after USER chooses one."
+      ],
+      "acceptance": [
+        "A stranger can follow the README to run the app (USER confirms on a clean clone).",
+        "Eval numbers in README match EVAL_REPORT.md."
+      ],
+      "verify": "read README.md ; fresh clone test",
+      "depends_on": ["F30"],
+      "est_hours": 2.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F32",
+      "milestone": 3,
+      "phase": "Phase 9A-9B",
+      "title": "Secrets and repository hygiene check",
+      "description": "Make sure no key ever reaches GitHub.",
+      "steps": [
+        "Search the working tree AND git history for the API key pattern and for .env.",
+        "Confirm .env, chroma_db/, the SQLite file and data/raw/ are ignored.",
+        "If any key was ever committed: tell the user to rotate it immediately; deleting the commit is not enough.",
+        "Pin versions in requirements.txt."
+      ],
+      "acceptance": [
+        "No key found in tree or history.",
+        "requirements.txt installs cleanly in a fresh venv."
+      ],
+      "verify": "git log --all -p -S\"GEMINI_API_KEY=\" ; git ls-files | findstr /i \".env\"  (use grep on Mac/Linux)",
+      "depends_on": ["F31"],
+      "est_hours": 0.5,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F33",
+      "milestone": 3,
+      "phase": "Phase 9C",
+      "title": "Deploy the app",
+      "description": "Public URL recruiters can open.",
+      "steps": [
+        "Recommended first target: Streamlit Community Cloud (free, simplest). If memory limits break the sentence-transformers + Chroma stack, move to Hugging Face Spaces, which is also recognised in AI/ML circles. Agent must re-check current platform limits before choosing.",
+        "USER: decide how the vector index gets there: commit a prebuilt chroma_db (only if the dataset licence allows redistribution) or build it at startup. Record the choice in docs/DECISIONS.md.",
+        "USER: add GEMINI_API_KEY in the platform's secrets settings. Never in the repo.",
+        "Deploy and record the URL in README."
+      ],
+      "acceptance": [
+        "Public URL opens the app.",
+        "The key exists only in platform secrets."
+      ],
+      "verify": "open the public URL in a private browser window",
+      "depends_on": ["F32"],
+      "est_hours": 2.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F34",
+      "milestone": 3,
+      "phase": "Phase 9D",
+      "title": "Deployment testing",
+      "description": "Run the Phase 9D checklist against the live site.",
+      "steps": [
+        "Site opens; ingredient entry works; a recipe generates; recipe displays correctly.",
+        "Invalid input is rejected with a message; a forced API failure shows a friendly message.",
+        "Test on a phone browser too.",
+        "Fix and redeploy anything that fails; note results in progress.md."
+      ],
+      "acceptance": [
+        "Every Phase 9D checklist item passes on the live URL."
+      ],
+      "verify": "manual checklist on the live URL",
+      "depends_on": ["F33"],
+      "est_hours": 1.0,
+      "status": "todo",
+      "completed_at": null
+    },
+    {
+      "id": "F35",
+      "milestone": 3,
+      "phase": "Portfolio packaging",
+      "title": "Portfolio packaging and interview prep",
+      "description": "Turn the finished project into something that gets interviews.",
+      "steps": [
+        "Write 3 resume bullets with real numbers from the eval report.",
+        "Record a 2-minute demo GIF or video and link it in the README.",
+        "Create docs/INTERVIEW_NOTES.md: 15 likely interview questions (RAG vs plain LLM, embeddings, validation, prompt design, failures found) with answers grounded in THIS project.",
+        "Final blunt interviewer-style review of the whole project in progress.md. Tag v1.0."
+      ],
+      "acceptance": [
+        "Resume bullets use only numbers that exist in the repo.",
+        "Tag v1.0 is on GitHub."
+      ],
+      "verify": "git tag ; read docs/INTERVIEW_NOTES.md",
+      "depends_on": ["F34"],
+      "est_hours": 1.5,
+      "status": "todo",
+      "completed_at": null
+    }
+  ]
+}
