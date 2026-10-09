@@ -77,8 +77,8 @@
       "verify": "python scripts/hello_gemini.py ; git check-ignore .env",
       "depends_on": ["F02"],
       "est_hours": 1.0,
-      "status": "todo",
-      "completed_at": null
+      "status": "done",
+      "completed_at": "2026-10-09"
     },
     {
       "id": "F04",

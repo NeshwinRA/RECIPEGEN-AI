@@ -50,3 +50,11 @@
 - What the owner should be able to explain in an interview (2-3 lines): The repo is structured around the architecture described in overview.md, with a single Streamlit entry point and a Python package for validation, prompts, and later retrieval logic. The base dependency install keeps the app reproducible and gives us the foundation for the Gemini and RAG work ahead.
 - Problems / decisions / user actions needed: No user action is required here; the repo is ready for F03, where Gemini API credentials and the hello-world call are introduced.
 - Next feature: F03
+
+## [2026-10-09] F03 - Gemini API key and hello-world call - DONE
+- What was done: created the local .env loader in recipegen/config.py, added a committed .env.example with placeholders, and created scripts/hello_gemini.py to make a real Gemini call using the current model name the API accepts.
+- Files created/changed: .env.example, recipegen/config.py, scripts/hello_gemini.py, .gitignore (already tracked)
+- Verify command and result: `& '.venv\Scripts\python.exe' scripts\hello_gemini.py` -> `Hello! How can I help you today?`; `git check-ignore .env` -> `.env`; missing-key validation with a blank API key raised `RuntimeError: Missing GEMINI_API_KEY in .env...` instead of a stack trace.
+- What the owner should be able to explain in an interview (2-3 lines): Configuration is kept in `.env` and loaded via a small settings module so the app does not hardcode credentials, and the hello-world call proves the project can talk to Gemini. The important lesson here is that model names must be verified against the live API because provider docs and runtime availability can diverge.
+- Problems / decisions / user actions needed: The live API rejected `gemini-2.5-flash` and explicitly recommended `gemini-3.8-flash`, so the real runtime value was used. Keep `.env` local-only and never commit it.
+- Next feature: F04
