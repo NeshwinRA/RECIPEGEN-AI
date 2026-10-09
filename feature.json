@@ -100,8 +100,8 @@
       "verify": "pytest tests/test_validation.py -q",
       "depends_on": ["F02"],
       "est_hours": 1.5,
-      "status": "todo",
-      "completed_at": null
+      "status": "done",
+      "completed_at": "2026-10-09"
     },
     {
       "id": "F05",

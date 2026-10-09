@@ -13,6 +13,14 @@ ENV_PATH = ROOT_DIR / ".env"
 
 load_dotenv(dotenv_path=ENV_PATH)
 
+MAX_INGREDIENTS = 15
+MAX_INGREDIENT_LENGTH = 40
+MIN_COOKING_TIME = 5
+MAX_COOKING_TIME = 180
+MIN_SERVINGS = 1
+MAX_SERVINGS = 10
+MAX_INPUT_CHARS = 500
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -34,7 +42,7 @@ def get_settings() -> Settings:
         )
     if not model:
         raise RuntimeError(
-            "Missing GEMINI_MODEL in .env. Use a valid Gemini model name such as gemini-2.5-flash."
+            "Missing GEMINI_MODEL in .env. Use a valid Gemini model name such as gemini-3.8-flash."
         )
 
     return Settings(gemini_api_key=api_key, gemini_model=model)

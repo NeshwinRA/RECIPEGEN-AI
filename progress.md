@@ -58,3 +58,11 @@
 - What the owner should be able to explain in an interview (2-3 lines): Configuration is kept in `.env` and loaded via a small settings module so the app does not hardcode credentials, and the hello-world call proves the project can talk to Gemini. The important lesson here is that model names must be verified against the live API because provider docs and runtime availability can diverge.
 - Problems / decisions / user actions needed: The live API rejected `gemini-2.5-flash` and explicitly recommended `gemini-3.8-flash`, so the real runtime value was used. Keep `.env` local-only and never commit it.
 - Next feature: F04
+
+## [2026-10-09] F04 - Input validation module - DONE
+- What was done: added configuration constants for the validation ranges, built pure-Python validation logic in recipegen/validation.py, and wrote regression tests covering valid inputs, invalid inputs, duplicate ingredients, length limits, and boundary values.
+- Files created/changed: recipegen/config.py, recipegen/validation.py, tests/test_validation.py
+- Verify command and result: `& '.venv\Scripts\python.exe' -m pytest tests/test_validation.py -q` -> `9 passed in 0.03s`.
+- What the owner should be able to explain in an interview (2-3 lines): Validation happens before any model call so we fail fast on bad user input instead of sending nonsense to Gemini. The checks are plain Python constants and functions, which keeps the validation easy to test and independent from the Streamlit UI.
+- Problems / decisions / user actions needed: The agreed limits are now enforced in code: ingredients 1-15, each 2-40 chars, cooking time 5-180 minutes, servings 1-10, and total input under 500 characters. No further action is required before moving to F05.
+- Next feature: F05
