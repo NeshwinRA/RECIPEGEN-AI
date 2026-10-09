@@ -53,8 +53,8 @@
       "verify": "python -c \"import streamlit, pydantic, dotenv; from google import genai; print('ok')\"",
       "depends_on": ["F01"],
       "est_hours": 0.5,
-      "status": "todo",
-      "completed_at": null
+      "status": "done",
+      "completed_at": "2026-10-09"
     },
     {
       "id": "F03",

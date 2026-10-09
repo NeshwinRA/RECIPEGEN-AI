@@ -42,3 +42,11 @@
 - What the owner should be able to explain in an interview (2-3 lines): The project is pinned to Python 3.12 to avoid dependency risk with ChromaDB and sentence-transformers, and the repo is now connected to GitHub. This setup is required before any project work or package installation begins.
 - Problems / decisions / user actions needed: The repo was created locally and connected to the supplied remote URL. No further user action is required for F01; proceed to the next eligible feature in the same milestone.
 - Next feature: F02
+
+## [2026-10-09] F02 - Project structure and base dependencies - DONE
+- What was done: created the required folder layout from overview.md, added the base package stubs, created requirements.txt and a minimal README.md, and installed the Milestone 1 dependencies into the Python 3.12 venv.
+- Files created/changed: app.py, README.md, requirements.txt, recipegen/*.py, tests/__init__.py, data/, eval/, scripts/, docs/
+- Verify command and result: `& '.venv\Scripts\python.exe' -c "import streamlit, pydantic, dotenv; from google import genai; print('ok')"` -> `ok`; folder check confirmed the required folders and project files exist under the repo root.
+- What the owner should be able to explain in an interview (2-3 lines): The repo is structured around the architecture described in overview.md, with a single Streamlit entry point and a Python package for validation, prompts, and later retrieval logic. The base dependency install keeps the app reproducible and gives us the foundation for the Gemini and RAG work ahead.
+- Problems / decisions / user actions needed: No user action is required here; the repo is ready for F03, where Gemini API credentials and the hello-world call are introduced.
+- Next feature: F03
