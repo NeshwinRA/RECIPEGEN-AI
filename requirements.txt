@@ -3,3 +3,9 @@ google-genai
 python-dotenv
 pydantic
 pytest
+pandas
+chromadb
+numpy
+onnxruntime
+tokenizers
+huggingface-hub
