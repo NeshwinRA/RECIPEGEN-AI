@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .response_validation import ValidationReport
 
 
 @dataclass
@@ -50,3 +53,28 @@ class RecipeRequest:
     spice_level: str
     equipment: str
     bachelor_mode: bool = False
+
+
+@dataclass
+class GeneratedRecipe:
+    """Recipe content generated for a request, without a dataset recipe ID."""
+
+    recipe_name: str
+    ingredients: list[str]
+    steps: list[str]
+    total_time_min: int | None = None
+    prep_time_min: int | None = None
+    cook_time_min: int | None = None
+    servings: int | None = None
+    tags: list[str] | None = None
+    nutrition: list[float] | None = None
+
+
+@dataclass(frozen=True)
+class GenerationResult:
+    """Generated recipe content, its provenance, and validation outcome."""
+
+    recipe: GeneratedRecipe
+    grounded: bool
+    source_recipe_ids: list[int]
+    validation_report: ValidationReport

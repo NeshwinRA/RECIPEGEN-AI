@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .config import MAX_SERVINGS, MIN_SERVINGS
-from .models import Recipe, RecipeRequest
+from .models import GeneratedRecipe, Recipe, RecipeRequest
 
 DIETARY_KEYWORDS_PATH = Path(__file__).resolve().parent.parent / "data" / "dietary_keywords.json"
 DIETARY_SAFETY_WARNING = (
@@ -100,21 +100,22 @@ def _dietary_conflicts(
 
 
 def validate_recipe_response(
-    recipe: Recipe | Mapping[str, Any],
+    recipe: Recipe | GeneratedRecipe | Mapping[str, Any],
     request: RecipeRequest,
 ) -> ValidationReport:
     """Validate response fields and user constraints without treating warnings as proof.
 
-    Source references are not part of the current Recipe/RecipeRequest response
-    schema, so this function does not attempt source-reference validation.
+    GeneratedRecipe intentionally has no dataset recipe ID. Mapping responses
+    and dataset Recipe records retain the existing required-ID validation.
     """
 
     errors: list[str] = []
     warnings = [DIETARY_SAFETY_WARNING]
 
-    recipe_id = _read_recipe_value(recipe, "recipe_id")
-    if not isinstance(recipe_id, int) or isinstance(recipe_id, bool) or recipe_id <= 0:
-        errors.append("Recipe ID must be a positive integer.")
+    if not isinstance(recipe, GeneratedRecipe):
+        recipe_id = _read_recipe_value(recipe, "recipe_id")
+        if not isinstance(recipe_id, int) or isinstance(recipe_id, bool) or recipe_id <= 0:
+            errors.append("Recipe ID must be a positive integer.")
 
     recipe_name = _read_recipe_value(recipe, "recipe_name")
     if not isinstance(recipe_name, str) or not recipe_name.strip():
