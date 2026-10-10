@@ -62,6 +62,10 @@ def test_prompt_keeps_request_sources_and_output_rules_separate() -> None:
     assert "Do not include a recipe_id" in prompt
     assert "never claim guaranteed dietary suitability or allergy safety" in prompt
     assert "never derive or relabel it as prep_time_min or cook_time_min" in prompt
+    assert "INGREDIENT AVAILABILITY POLICY" in prompt
+    assert "salt, water, black pepper, sugar, cooking oil, turmeric powder, chilli powder" in prompt
+    assert "Every other ingredient must be explicitly listed in the user request" in prompt
+    assert "Do not add optional ingredients or substitutions" in prompt
 
 
 def test_empty_retrieval_prompt_explicitly_marks_original_ungrounded_result() -> None:

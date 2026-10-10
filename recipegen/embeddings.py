@@ -15,6 +15,8 @@ import numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer
 
+from .timing import timed_stage
+
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_COLLECTION_NAME = "recipe_documents"
 MODEL_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
@@ -210,7 +212,8 @@ def load_embedding_model(
 ) -> ONNXEmbeddingModel:
     """Load and cache the pinned ONNX model and tokenizer for this process."""
 
-    return ONNXEmbeddingModel(model_name=model_name, device=device)
+    with timed_stage("embedding_model_initialization"):
+        return ONNXEmbeddingModel(model_name=model_name, device=device)
 
 
 def embed_texts(
@@ -531,11 +534,26 @@ def query_recipe_collection(
     """Query the collection for the nearest recipe matches."""
 
     model = load_embedding_model(model_name=model_name)
-    query_embedding = embed_texts([query_text], model_name=model_name, model=model, batch_size=1)[0]
-    client = _collection_client(db_path)
-    collection = client.get_collection(name=collection_name)
-    return collection.query(
-        query_embeddings=[query_embedding],
-        n_results=n_results,
-        include=["documents", "metadatas", "distances"],
-    )
+    with timed_stage("query_embedding", input_count=1):
+        query_embedding = embed_texts(
+            [query_text],
+            model_name=model_name,
+            model=model,
+            batch_size=1,
+        )[0]
+    with timed_stage("chromadb_client_setup"):
+        client = _collection_client(db_path)
+    with timed_stage("chromadb_collection_setup"):
+        collection = client.get_collection(name=collection_name)
+    with timed_stage("chromadb_query", n_results=n_results) as metrics:
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=n_results,
+            include=["documents", "metadatas", "distances"],
+        )
+        result_ids = results.get("ids")
+        if isinstance(result_ids, list) and result_ids and isinstance(result_ids[0], list):
+            metrics["result_count"] = len(result_ids[0])
+        else:
+            metrics["result_count"] = 0
+    return results

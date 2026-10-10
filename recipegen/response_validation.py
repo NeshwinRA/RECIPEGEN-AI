@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -16,6 +17,102 @@ DIETARY_KEYWORDS_PATH = Path(__file__).resolve().parent.parent / "data" / "dieta
 DIETARY_SAFETY_WARNING = (
     "Ingredient keyword checks are a first safeguard only; recipe suitability and "
     "allergy safety are not guaranteed."
+)
+_INGREDIENT_ALIASES = {
+    "black pepper": "black pepper",
+    "pepper": "black pepper",
+    "ground black pepper": "black pepper",
+    "freshly ground black pepper": "black pepper",
+    "salt": "salt",
+    "table salt": "salt",
+    "sea salt": "salt",
+    "kosher salt": "salt",
+    "water": "water",
+    "sugar": "sugar",
+    "granulated sugar": "sugar",
+    "white sugar": "sugar",
+    "caster sugar": "sugar",
+    "cooking oil": "cooking oil",
+    "oil": "cooking oil",
+    "vegetable oil": "cooking oil",
+    "canola oil": "cooking oil",
+    "sunflower oil": "cooking oil",
+    "neutral oil": "cooking oil",
+    "olive oil": "cooking oil",
+    "turmeric": "turmeric powder",
+    "ground turmeric": "turmeric powder",
+    "turmeric powder": "turmeric powder",
+    "chilli powder": "chilli powder",
+    "chili powder": "chilli powder",
+    "red chilli powder": "chilli powder",
+    "red chili powder": "chilli powder",
+    "red chile powder": "chilli powder",
+    "oat": "oats",
+    "oats": "oats",
+    "oatmeal": "oats",
+    "banana": "banana",
+    "honey": "honey",
+    "scallion": "green onion",
+    "spring onion": "green onion",
+    "green onion": "green onion",
+    "chickpea": "chickpea",
+    "garbanzo bean": "chickpea",
+    "eggplant": "eggplant",
+    "aubergine": "eggplant",
+    "courgette": "zucchini",
+    "zucchini": "zucchini",
+    "capsicum": "bell pepper",
+    "bell pepper": "bell pepper",
+    "red onion": "onion",
+    "white onion": "onion",
+    "yellow onion": "onion",
+    "onion": "onion",
+}
+_PANTRY_STAPLE_NAMES = {
+    "salt",
+    "water",
+    "black pepper",
+    "sugar",
+    "cooking oil",
+    "turmeric powder",
+    "chilli powder",
+}
+_PREPARATION_WORDS = {
+    "chopped",
+    "diced",
+    "sliced",
+    "minced",
+    "grated",
+    "shredded",
+    "mashed",
+    "crushed",
+    "ground",
+    "softened",
+    "melted",
+    "finely",
+    "freshly",
+    "roughly",
+    "fresh",
+    "ripe",
+    "large",
+    "medium",
+    "small",
+    "rolled",
+    "old",
+    "fashioned",
+    "quick",
+    "cooking",
+    "drizzled",
+}
+_LEADING_QUANTITY = re.compile(
+    r"^\s*(?:(?:\d+\s+\d+/\d+|\d+/\d+|\d+(?:\.\d+)?|[¼½¾])\s*)"
+)
+_LEADING_MEASURE = re.compile(
+    r"^\s*(?:cups?|tablespoons?|tbsp|teaspoons?|tsp|grams?|g|kilograms?|kg|"
+    r"ounces?|oz|pounds?|lbs?|millilit(?:er|re)s?|ml|lit(?:er|re)s?|l|"
+    r"pinch(?:es)?|dash(?:es)?|cloves?|slices?|pieces?|cans?|packages?|bunch(?:es)?)\b\s*"
+    r"(?:of\s+)?",
+    flags=re.IGNORECASE,
 )
 
 
@@ -42,6 +139,87 @@ def _is_non_negative_integer(value: Any) -> bool:
     """Return whether a value is an integer time, excluding bool and numeric strings."""
 
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _singularize_word(word: str) -> str:
+    if len(word) > 4 and word.endswith("ies"):
+        return word[:-3] + "y"
+    if len(word) > 4 and word.endswith(("ches", "shes", "xes", "zes")):
+        return word[:-2]
+    if len(word) > 4 and word.endswith("oes"):
+        return word[:-2]
+    if len(word) > 3 and word.endswith("s") and not word.endswith(("ss", "us", "is")):
+        return word[:-1]
+    return word
+
+
+def _normalize_ingredient_name(value: str) -> str:
+    """Normalize quantities and common preparation wording for ingredient matching."""
+
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    normalized = normalized.replace("⁄", "/")
+    normalized = normalized.replace("-", " ")
+    preparation_tokens = _PREPARATION_WORDS | {"and"}
+
+    def remove_preparation_note(match: re.Match[str]) -> str:
+        note_words = set(re.findall(r"[a-z]+", match.group(1).casefold()))
+        return " " if note_words and note_words <= preparation_tokens else match.group(0)
+
+    normalized = re.sub(r"\(([^)]*)\)", remove_preparation_note, normalized)
+    comma_parts = normalized.split(",")
+    if len(comma_parts) > 1:
+        note_words = set(re.findall(r"[a-z]+", ",".join(comma_parts[1:])))
+        if note_words and note_words <= preparation_tokens:
+            normalized = comma_parts[0]
+
+    normalized = re.sub(r"^\s*(?:a|an)\s+", "", normalized)
+    while True:
+        without_quantity = _LEADING_QUANTITY.sub("", normalized, count=1)
+        without_measure = _LEADING_MEASURE.sub("", without_quantity, count=1)
+        if without_measure == normalized:
+            break
+        normalized = without_measure
+
+    words = re.findall(r"[a-z]+", normalized)
+    words = [
+        word
+        for word in words
+        if word not in _PREPARATION_WORDS and word not in {"of", "the", "a", "an"}
+    ]
+    normalized = " ".join(_singularize_word(word) for word in words)
+    return _INGREDIENT_ALIASES.get(normalized, normalized)
+
+
+def _validate_ingredient_availability(
+    recipe_ingredients: list[str],
+    requested_ingredients: list[str],
+) -> list[str]:
+    provided = {
+        _normalize_ingredient_name(ingredient)
+        for ingredient in requested_ingredients
+        if isinstance(ingredient, str) and ingredient.strip()
+    }
+    used = {
+        _normalize_ingredient_name(ingredient)
+        for ingredient in recipe_ingredients
+        if ingredient.strip()
+    }
+    allowed = provided | _PANTRY_STAPLE_NAMES
+    errors: list[str] = []
+
+    unapproved = sorted(used - allowed)
+    if unapproved:
+        errors.append(
+            "Recipe contains ingredients not provided by the user or allowed pantry "
+            "staples: " + ", ".join(unapproved) + "."
+        )
+
+    unused = sorted(provided - used)
+    if unused:
+        errors.append(
+            "Requested ingredients were not used: " + ", ".join(unused) + "."
+        )
+    return errors
 
 
 def _load_dietary_keywords() -> dict[str, Any]:
@@ -133,6 +311,9 @@ def validate_recipe_response(
         ]
         if len(ingredients) != len(ingredients_value):
             errors.append("Every recipe ingredient must be a non-empty string.")
+    errors.extend(
+        _validate_ingredient_availability(ingredients, request.ingredients)
+    )
 
     steps_value = _read_recipe_value(recipe, "steps")
     if not isinstance(steps_value, (list, tuple)) or not steps_value:

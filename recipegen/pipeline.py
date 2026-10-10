@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 from typing import Any, Callable, Protocol
 
-from .llm_client import GeminiClient
+from .llm_client import GeminiInteractionsClient
 from .models import GeneratedRecipe, GenerationResult, RecipeRequest
 from .prompts import build_plain_prompt, build_rag_prompt
 from .rag import DEFAULT_VECTOR_DB_PATH, has_foodcom_provenance_claim, retrieve_recipes
 from .response_validation import ValidationReport, validate_recipe_response
+from .timing import timed_stage
 from .validation import validate_inputs
 
 _RECIPE_FIELDS = {
@@ -137,7 +138,8 @@ def generate_recipe(
 ) -> GenerationResult:
     """Validate a request, optionally retrieve context, and return validated output."""
 
-    _validate_request(request)
+    with timed_stage("request_validation"):
+        _validate_request(request)
 
     retrieved = (
         retrieve_recipes(
@@ -152,32 +154,40 @@ def generate_recipe(
     prompt = build_rag_prompt(request, retrieved) if retrieved else build_plain_prompt(request)
 
     owns_client = llm_client is None
-    client = llm_client if llm_client is not None else GeminiClient()
+    client = llm_client if llm_client is not None else GeminiInteractionsClient()
     try:
         response_text = client.generate_text(prompt)
     finally:
         if owns_client:
             client.close()
 
-    recipe, source_ids = _parse_response(response_text)
-    available_ids = {record["source_recipe_id"] for record in retrieved}
-    unknown_ids = sorted(set(source_ids) - available_ids)
-    if unknown_ids:
-        raise ResponseParsingError(
-            "Gemini referenced recipe IDs that were not retrieved."
-        )
-    if retrieved and not source_ids:
-        raise ResponseParsingError(
-            "A response using retrieved context must identify at least one retrieved source."
-        )
-    if not retrieved and source_ids:
-        raise ResponseParsingError("An ungrounded response cannot cite dataset sources.")
-    if not retrieved and has_foodcom_provenance_claim(recipe):
-        raise ResponseParsingError(
-            "An ungrounded response cannot claim or imply Food.com provenance."
-        )
+    with timed_stage("json_response_parsing"):
+        recipe, source_ids = _parse_response(response_text)
 
-    report = validate_recipe_response(recipe, request)
+    with timed_stage(
+        "citation_validation",
+        retrieved_count=len(retrieved),
+        cited_count=len(source_ids),
+    ):
+        available_ids = {record["source_recipe_id"] for record in retrieved}
+        unknown_ids = sorted(set(source_ids) - available_ids)
+        if unknown_ids:
+            raise ResponseParsingError(
+                "Gemini referenced recipe IDs that were not retrieved."
+            )
+        if retrieved and not source_ids:
+            raise ResponseParsingError(
+                "A response using retrieved context must identify at least one retrieved source."
+            )
+        if not retrieved and source_ids:
+            raise ResponseParsingError("An ungrounded response cannot cite dataset sources.")
+        if not retrieved and has_foodcom_provenance_claim(recipe):
+            raise ResponseParsingError(
+                "An ungrounded response cannot claim or imply Food.com provenance."
+            )
+
+    with timed_stage("response_validation"):
+        report = validate_recipe_response(recipe, request)
     if not report.passed:
         raise RecipeResponseValidationError(report)
 

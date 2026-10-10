@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from .models import GeneratedRecipe, RecipeRequest
+from .timing import timed_stage
 
 FULL_COLLECTION_NAME = "recipe_documents_full"
 DEFAULT_VECTOR_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "vector_db"
@@ -141,4 +142,7 @@ def retrieve_recipes(
         collection_name=FULL_COLLECTION_NAME,
         n_results=n_results,
     )
-    return normalize_retrieval_results(raw_results)
+    with timed_stage("retrieval_result_normalization") as metrics:
+        records = normalize_retrieval_results(raw_results)
+        metrics["result_count"] = len(records)
+    return records

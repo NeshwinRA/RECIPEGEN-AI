@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -302,3 +303,70 @@ def test_query_recipe_collection_returns_relevant_recipe(monkeypatch, tmp_path) 
     assert len(results["ids"]) == 1
     assert len(results["ids"][0]) >= 1
     assert "recipe_101" in results["ids"][0]
+
+
+def test_query_timing_logs_embedding_and_chromadb_stages_safely(
+    monkeypatch,
+    tmp_path,
+    caplog,
+) -> None:
+    class FakeModel:
+        def encode(self, texts, **kwargs):
+            return np.array([[1.0, 0.0, 0.0] for _ in texts], dtype=float)
+
+    monkeypatch.setattr(
+        "recipegen.embeddings.load_embedding_model",
+        lambda model_name, device=None: FakeModel(),
+    )
+    docs_path = tmp_path / "docs.jsonl"
+    db_path = tmp_path / "vector_db"
+    _write_documents(docs_path)
+    index_recipe_documents(
+        docs_path,
+        db_path,
+        collection_name="timing_test",
+        sample_size=2,
+        batch_size=2,
+        reset_collection=True,
+    )
+
+    with caplog.at_level(logging.INFO, logger="recipegen.timing"):
+        results = query_recipe_collection(
+            "private query contents",
+            db_path,
+            collection_name="timing_test",
+            n_results=2,
+        )
+
+    for stage in (
+        "query_embedding",
+        "chromadb_client_setup",
+        "chromadb_collection_setup",
+        "chromadb_query",
+    ):
+        assert f"stage={stage}" in caplog.text
+    assert "result_count': 2" in caplog.text
+    assert "private query contents" not in caplog.text
+    assert len(results["ids"][0]) == 2
+
+
+def test_embedding_model_initialization_timing_is_emitted_on_cache_miss(
+    monkeypatch,
+    caplog,
+) -> None:
+    from recipegen import embeddings
+
+    class FakeModel:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(embeddings, "ONNXEmbeddingModel", FakeModel)
+    embeddings.load_embedding_model.cache_clear()
+    try:
+        with caplog.at_level(logging.INFO, logger="recipegen.timing"):
+            first = embeddings.load_embedding_model()
+            second = embeddings.load_embedding_model()
+        assert first is second
+        assert caplog.text.count("stage=embedding_model_initialization") == 1
+    finally:
+        embeddings.load_embedding_model.cache_clear()

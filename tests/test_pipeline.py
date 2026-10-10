@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -84,6 +85,15 @@ class FakeGeminiClient:
         raise AssertionError("Injected clients remain caller-owned.")
 
 
+class DefaultFakeGeminiClient(FakeGeminiClient):
+    def __init__(self, response: str | Exception) -> None:
+        super().__init__(response)
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def fake_retriever(result: dict[str, Any], calls: list[dict[str, Any]] | None = None):
     def retrieve(*args: Any, **kwargs: Any) -> dict[str, Any]:
         if calls is not None:
@@ -91,6 +101,55 @@ def fake_retriever(result: dict[str, Any], calls: list[dict[str, Any]] | None = 
         return result
 
     return retrieve
+
+
+def test_generation_defaults_to_interactions_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = DefaultFakeGeminiClient(make_response(source_recipe_ids=[]))
+    constructed_clients: list[DefaultFakeGeminiClient] = []
+
+    def make_interactions_client() -> DefaultFakeGeminiClient:
+        constructed_clients.append(client)
+        return client
+
+    monkeypatch.setattr(
+        "recipegen.pipeline.GeminiInteractionsClient",
+        make_interactions_client,
+    )
+
+    result = generate_recipe(make_request(), use_rag=False)
+
+    assert result.grounded is False
+    assert result.recipe.recipe_name == "Potato onion curry"
+    assert len(constructed_clients) == 1
+    assert len(client.prompts) == 1
+    assert client.closed is True
+
+
+def test_default_interactions_client_errors_are_propagated_without_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = DefaultFakeGeminiClient(
+        GeminiRequestError("Gemini rejected the generation request (HTTP 400).")
+    )
+    constructed_clients: list[DefaultFakeGeminiClient] = []
+
+    def make_interactions_client() -> DefaultFakeGeminiClient:
+        constructed_clients.append(client)
+        return client
+
+    monkeypatch.setattr(
+        "recipegen.pipeline.GeminiInteractionsClient",
+        make_interactions_client,
+    )
+
+    with pytest.raises(GeminiRequestError, match="HTTP 400"):
+        generate_recipe(make_request(), use_rag=False)
+
+    assert len(constructed_clients) == 1
+    assert len(client.prompts) == 1
+    assert client.closed is True
 
 
 def test_grounded_generation_validates_result_and_only_uses_retrieved_source() -> None:
@@ -113,6 +172,49 @@ def test_grounded_generation_validates_result_and_only_uses_retrieved_source() -
     assert any("Total cooking time is unknown" in warning for warning in result.validation_report.warnings)
     assert calls[0]["kwargs"]["collection_name"] == "recipe_documents_full"
     assert "recipe_id: 101 | recipe_name: Potato curry" in llm.prompts[0]
+
+
+def test_successful_generation_logs_safe_stage_timings(caplog: pytest.LogCaptureFixture) -> None:
+    llm = FakeGeminiClient(make_response(source_recipe_ids=[]))
+    no_records = make_retrieval_result(ids=[], documents=[], metadata=[])
+
+    with caplog.at_level(logging.INFO, logger="recipegen.timing"):
+        result = generate_recipe(
+            make_request(),
+            llm_client=llm,
+            retrieval_fn=fake_retriever(no_records),
+        )
+
+    log_text = caplog.text
+    for stage in (
+        "request_validation",
+        "retrieval_result_normalization",
+        "json_response_parsing",
+        "citation_validation",
+        "response_validation",
+    ):
+        assert f"stage={stage}" in log_text
+    assert "result_count': 0" in log_text
+    assert "potato" not in log_text
+    assert "Potato onion curry" not in log_text
+    assert result.grounded is False
+
+
+def test_failed_request_validation_logs_only_error_category(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO, logger="recipegen.timing"):
+        with pytest.raises(RequestValidationError):
+            generate_recipe(
+                make_request(ingredients=[]),
+                llm_client=FakeGeminiClient(make_response()),
+                retrieval_fn=lambda *args, **kwargs: pytest.fail("Retrieval must not run."),
+            )
+
+    assert "stage=request_validation" in caplog.text
+    assert "outcome=error" in caplog.text
+    assert "error_category=RequestValidationError" in caplog.text
+    assert "potato" not in caplog.text
 
 
 def test_empty_retrieval_returns_ungrounded_recipe_without_citations() -> None:
@@ -179,7 +281,7 @@ def test_unrelated_food_word_in_ungrounded_ingredient_is_allowed() -> None:
     no_records = make_retrieval_result(ids=[], documents=[], metadata=[])
 
     result = generate_recipe(
-        make_request(),
+        make_request(ingredients=["potato", "food coloring"]),
         llm_client=llm,
         retrieval_fn=fake_retriever(no_records),
     )
@@ -191,6 +293,23 @@ def test_invented_source_ids_are_rejected() -> None:
     llm = FakeGeminiClient(make_response(source_recipe_ids=[999]))
 
     with pytest.raises(ResponseParsingError, match="not retrieved"):
+        generate_recipe(
+            make_request(),
+            llm_client=llm,
+            retrieval_fn=fake_retriever(make_retrieval_result()),
+        )
+
+
+@pytest.mark.parametrize(
+    "source_recipe_ids",
+    [[0], [-1], [True], [101, 101]],
+)
+def test_malformed_source_ids_are_rejected_without_repair(
+    source_recipe_ids: list[Any],
+) -> None:
+    llm = FakeGeminiClient(make_response(source_recipe_ids=source_recipe_ids))
+
+    with pytest.raises(ResponseParsingError):
         generate_recipe(
             make_request(),
             llm_client=llm,

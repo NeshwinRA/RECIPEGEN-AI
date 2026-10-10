@@ -8,12 +8,13 @@ from recipegen.response_validation import validate_recipe_response
 
 def make_request(
     *,
+    ingredients: list[str] | None = None,
     dietary_preference: str = "Vegetarian",
     max_cooking_time: int = 30,
     servings: int = 2,
 ) -> RecipeRequest:
     return RecipeRequest(
-        ingredients=["potato", "onion"],
+        ingredients=ingredients if ingredients is not None else ["potato", "onion"],
         cuisine="South Indian",
         dietary_preference=dietary_preference,
         max_cooking_time=max_cooking_time,
@@ -46,6 +47,89 @@ def test_valid_recipe_passes_with_explicit_non_guarantee_warning() -> None:
     assert report.passed is True
     assert report.errors == []
     assert any("not guaranteed" in warning for warning in report.warnings)
+
+
+def test_requested_oats_banana_and_honey_allow_relevant_pantry_staples() -> None:
+    request = make_request(
+        ingredients=["oats", "banana", "honey"],
+        dietary_preference="Eggetarian",
+    )
+    recipe = make_recipe(
+        ingredients=[
+            "1 cup rolled oats",
+            "1 ripe banana, mashed",
+            "2 tablespoons honey",
+            "water",
+            "a pinch of salt",
+        ]
+    )
+
+    report = validate_recipe_response(recipe, request)
+
+    assert report.passed is True
+    assert report.errors == []
+
+
+def test_unprovided_cinnamon_is_rejected() -> None:
+    request = make_request(ingredients=["oats", "banana", "honey"])
+    recipe = make_recipe(
+        ingredients=["rolled oats", "banana", "honey", "ground cinnamon"]
+    )
+
+    report = validate_recipe_response(recipe, request)
+
+    assert report.passed is False
+    assert any(
+        "not provided by the user or allowed pantry staples: cinnamon" in error
+        for error in report.errors
+    )
+
+
+def test_pepper_alias_and_quantity_preparation_descriptions_match() -> None:
+    request = make_request(ingredients=["pepper", "oats", "banana", "honey"])
+    recipe = make_recipe(
+        ingredients=[
+            "1/4 teaspoon freshly ground black pepper",
+            "1 cup old-fashioned rolled oats",
+            "1 medium banana, sliced",
+            "2 tbsp honey",
+        ]
+    )
+
+    report = validate_recipe_response(recipe, request)
+
+    assert report.passed is True
+    assert report.errors == []
+
+
+def test_unused_requested_ingredient_rejects_unworkable_recipe() -> None:
+    request = make_request(ingredients=["oats", "banana", "honey"])
+    recipe = make_recipe(ingredients=["rolled oats", "mashed banana"])
+
+    report = validate_recipe_response(recipe, request)
+
+    assert report.passed is False
+    assert any("Requested ingredients were not used: honey." == error for error in report.errors)
+
+
+def test_other_approved_pantry_staples_are_allowed() -> None:
+    request = make_request(ingredients=["potato", "onion"])
+    recipe = make_recipe(
+        ingredients=[
+            "potatoes",
+            "yellow onion, diced",
+            "black pepper",
+            "granulated sugar",
+            "vegetable oil",
+            "ground turmeric",
+            "red chili powder",
+        ]
+    )
+
+    report = validate_recipe_response(recipe, request)
+
+    assert report.passed is True
+    assert report.errors == []
 
 
 def test_missing_required_name_ingredients_and_instructions_fail() -> None:
@@ -198,7 +282,10 @@ def test_egg_fails_egg_free_vegetarian_validation() -> None:
 def test_egg_is_allowed_for_eggetarian() -> None:
     report = validate_recipe_response(
         make_recipe(ingredients=["potato", "egg", "onion"]),
-        make_request(dietary_preference="Eggetarian"),
+        make_request(
+            ingredients=["potato", "egg", "onion"],
+            dietary_preference="Eggetarian",
+        ),
     )
 
     assert report.passed is True
@@ -217,11 +304,11 @@ def test_vegetarian_recipe_with_chicken_fails() -> None:
 def test_vegan_check_flags_dairy_but_allows_plant_milk() -> None:
     dairy_report = validate_recipe_response(
         make_recipe(ingredients=["oats", "milk"]),
-        make_request(dietary_preference="Vegan"),
+        make_request(ingredients=["oats", "milk"], dietary_preference="Vegan"),
     )
     plant_report = validate_recipe_response(
         make_recipe(ingredients=["oats", "oat milk"]),
-        make_request(dietary_preference="Vegan"),
+        make_request(ingredients=["oats", "oat milk"], dietary_preference="Vegan"),
     )
 
     assert dairy_report.passed is False
@@ -231,7 +318,10 @@ def test_vegan_check_flags_dairy_but_allows_plant_milk() -> None:
 def test_plant_milk_does_not_hide_a_separate_dairy_milk_ingredient() -> None:
     report = validate_recipe_response(
         make_recipe(ingredients=["almond milk", "milk"]),
-        make_request(dietary_preference="Vegan"),
+        make_request(
+            ingredients=["almond milk", "milk"],
+            dietary_preference="Vegan",
+        ),
     )
 
     assert report.passed is False
@@ -254,7 +344,10 @@ def test_vegan_check_flags_honey_and_fish() -> None:
 def test_eggplant_does_not_match_egg_keyword() -> None:
     report = validate_recipe_response(
         make_recipe(ingredients=["eggplant", "onion"]),
-        make_request(dietary_preference="Vegetarian"),
+        make_request(
+            ingredients=["eggplant", "onion"],
+            dietary_preference="Vegetarian",
+        ),
     )
 
     assert report.passed is True

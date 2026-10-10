@@ -21,6 +21,16 @@ _OUTPUT_FIELDS = (
     "source_recipe_ids",
 )
 
+_PANTRY_STAPLES = (
+    "salt",
+    "water",
+    "black pepper",
+    "sugar",
+    "cooking oil",
+    "turmeric powder",
+    "chilli powder",
+)
+
 
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -66,6 +76,14 @@ def _output_section(grounded: bool) -> str:
         "never derive or relabel it as prep_time_min or cook_time_min. The requested "
         "servings may be used as a user-requested target, not as a dataset fact. "
         "Respect the requested maximum total time when a supported total is available. "
+        "INGREDIENT AVAILABILITY POLICY: Use every ingredient listed in the user request "
+        "appropriately. Do not add optional ingredients or substitutions. The only "
+        "ingredients that may be used without appearing in the user request are these "
+        f"pantry staples: {', '.join(_PANTRY_STAPLES)}. Use them only when appropriate. "
+        "Every other ingredient must be explicitly listed in the user request. Do not "
+        "present optional or unavailable ingredients as available. If a suitable recipe "
+        "cannot be made using the requested ingredients and permitted pantry staples, "
+        "do not invent ingredients; return an honest recipe using only available items. "
         "Dietary checks are limited to listed ingredients; never claim guaranteed "
         "dietary suitability or allergy safety. Return valid JSON only."
     )
