@@ -215,8 +215,8 @@
       "verify": "pytest tests/test_response_validation.py -q",
       "depends_on": ["F08"],
       "est_hours": 2.5,
-      "status": "todo",
-      "completed_at": null
+      "status": "done",
+      "completed_at": "2026-10-10"
     },
     {
       "id": "F10",
